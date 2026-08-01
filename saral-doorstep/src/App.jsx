@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, LayoutDashboard, Sun, Moon } from 'lucide-react';
+import { LogOut, Sun, Moon } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
+import Login from './components/Login';
 import FieldAgentView from './components/FieldAgentView';
 import AdminView from './components/AdminView';
 
@@ -12,36 +13,77 @@ function getInitialTheme() {
 }
 
 export default function App() {
-  const [view, setView] = useState('agent');
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
   const [theme, setTheme] = useState(getInitialTheme);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState(null);
+  const [profileError, setProfileError] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
+  // Theme — independent of auth, so it applies on the login screen too.
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     window.localStorage.setItem('saral-theme', theme);
   }, [theme]);
-
   const toggleTheme = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'));
 
+  // Auth session
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Profile (full name + role) for whoever just logged in
+  useEffect(() => {
+    if (!session) {
+      setProfile(null);
+      return;
+    }
+    supabase
+      .from('profiles')
+      .select('full_name, role')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to load profile', error);
+          setProfileError(
+            'No profile found for this login. Make sure a matching row exists in the ' +
+            'profiles table (see supabase/auth-setup.sql).'
+          );
+        } else {
+          setProfile(data);
+          setProfileError(null);
+        }
+      });
+  }, [session]);
+
+  // Bookings — fetched once we know who's logged in (RLS scopes the result)
+  useEffect(() => {
+    if (!profile) return;
     async function loadBookings() {
+      setBookingsLoading(true);
       const { data, error } = await supabase.from('bookings').select('*').order('slot');
       if (error) {
         console.error('Failed to load bookings', error);
         setLoadError(error.message);
       } else {
         setBookings(data);
+        setLoadError(null);
       }
-      setLoading(false);
+      setBookingsLoading(false);
     }
     loadBookings();
-  }, []);
+  }, [profile]);
 
-  // Optimistic update: change local state immediately, then persist to
-  // Supabase in the background. If the write fails, we log it — good
-  // enough for now, a later pass can add a toast/rollback.
   const updateBooking = async (id, changes) => {
     setBookings((bs) => bs.map((b) => (b.id === id ? { ...b, ...changes } : b)));
     const { error } = await supabase.from('bookings').update(changes).eq('id', id);
@@ -62,57 +104,89 @@ export default function App() {
   const submitVisit = (id) => updateBooking(id, { status: 'submitted' });
   const assignAgent = (id, agent) => updateBooking(id, { agent });
 
+  const handleLogout = () => {
+    supabase.auth.signOut();
+    setBookings([]);
+  };
+
+  if (authLoading) {
+    return (
+      <div className="app-shell">
+        <p className="agent-eyebrow">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login theme={theme} onToggleTheme={toggleTheme} />;
+  }
+
+  if (profileError) {
+    return (
+      <div className="app-shell">
+        <div className="panel" style={{ maxWidth: 420 }}>
+          <p className="section-label">Account not set up</p>
+          <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>{profileError}</p>
+          <button onClick={handleLogout} className="btn-ghost mt-3">Sign out</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="app-shell">
+        <p className="agent-eyebrow">Setting up your account…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="top-bar">
         <div>
           <p className="wordmark">SARAL <span>@ Home</span></p>
-          <p className="wordmark-sub">Doorstep document services · Gurugram pilot</p>
+          <p className="wordmark-sub">
+            {profile.role === 'admin' ? 'Admin dashboard' : `Field agent · ${profile.full_name}`}
+          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="toggle-group">
-            <button className={`toggle-btn ${view === 'agent' ? 'active' : ''}`} onClick={() => setView('agent')}>
-              <Smartphone size={14} /> <span className="hidden sm:inline">Field agent</span>
-            </button>
-            <button className={`toggle-btn ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
-              <LayoutDashboard size={14} /> <span className="hidden sm:inline">Admin dashboard</span>
-            </button>
-          </div>
           <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle dark mode">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button onClick={handleLogout} className="btn-ghost flex items-center gap-1">
+            <LogOut size={14} /> <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </header>
 
       <main>
-        {loading && <p className="agent-eyebrow">Loading bookings…</p>}
+        {bookingsLoading && <p className="agent-eyebrow">Loading bookings…</p>}
 
-        {!loading && loadError && (
+        {!bookingsLoading && loadError && (
           <div className="panel">
             <p className="section-label">Couldn't load bookings</p>
-            <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>
-              {loadError} — check that <code>.env.local</code> has your Supabase URL and anon key,
-              and that <code>supabase/seed.sql</code> has been run in your project.
-            </p>
+            <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>{loadError}</p>
           </div>
         )}
 
-        {!loading && !loadError && (
-          view === 'agent' ? (
-            <FieldAgentView
-              bookings={bookings}
-              onStartVisit={startVisit}
-              onToggleChecklist={toggleChecklist}
-              onSaveSignature={saveSignature}
-              onCompleteVisit={completeVisit}
-            />
-          ) : (
+        {!bookingsLoading && !loadError && (
+          profile.role === 'admin' ? (
             <AdminView
               bookings={bookings}
               onAssignAgent={assignAgent}
               onVerify={verifyVisit}
               onSubmit={submitVisit}
+            />
+          ) : (
+            <FieldAgentView
+              agentName={profile.full_name}
+              bookings={bookings}
+              onStartVisit={startVisit}
+              onToggleChecklist={toggleChecklist}
+              onSaveSignature={saveSignature}
+              onCompleteVisit={completeVisit}
             />
           )
         )}

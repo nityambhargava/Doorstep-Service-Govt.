@@ -1,9 +1,10 @@
-// Static reference data — not stored in the database for now.
-// Bookings themselves now live in Supabase (see supabase/seed.sql
-// for the table schema and the same seed rows that used to live here).
+// Static reference data — not stored in the database.
+// Bookings live in Supabase (see supabase/seed.sql for schema + seed data,
+// and supabase/auth-setup.sql for the profiles table + RLS policies).
+// Which agent is "logged in" is no longer hardcoded here — it comes from
+// the authenticated user's profile (see src/App.jsx).
 
 export const AGENTS = ['Rohit Kumar', 'Priya Sharma', 'Amit Yadav'];
-export const CURRENT_AGENT = 'Rohit Kumar';
 
 export const STATUS_LABEL = {
   scheduled: 'Scheduled',

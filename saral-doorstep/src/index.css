@@ -150,3 +150,10 @@ select:focus-visible {
 .badge-stamp::before { content: ''; position: absolute; inset: 2px; border: 1px solid var(--indigo); border-radius: 2px; opacity: 0.5; }
 .badge-stamp.submitted { color: var(--green); border-color: var(--green); }
 .badge-stamp.submitted::before { border-color: var(--green); }
+
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--paper); position: relative; }
+.login-theme-toggle { position: absolute; top: 20px; right: 20px; }
+.login-card { background: var(--panel); border: 1.5px solid var(--line); border-radius: 14px; padding: 28px; width: 100%; max-width: 360px; box-shadow: var(--shadow); }
+
+.text-input { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; padding: 10px 12px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); width: 100%; box-sizing: border-box; }
+.text-input:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
