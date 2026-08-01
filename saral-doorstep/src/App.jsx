@@ -98,7 +98,18 @@ export default function App() {
     updateBooking(id, { checklist: { ...booking.checklist, [key]: !booking.checklist[key] } });
   };
 
-  const saveSignature = (id, data) => updateBooking(id, { signature: data });
+  const saveSignature = async (id, blob) => {
+    const path = `${id}.png`;
+    const { error: uploadError } = await supabase.storage
+      .from('signatures')
+      .upload(path, blob, { contentType: 'image/png', upsert: true });
+    if (uploadError) {
+      console.error(`Failed to upload signature for ${id}`, uploadError);
+      return;
+    }
+    updateBooking(id, { signature: path });
+  };
+  
   const completeVisit = (id) => updateBooking(id, { status: 'completed' });
   const verifyVisit = (id) => updateBooking(id, { status: 'verified' });
   const submitVisit = (id) => updateBooking(id, { status: 'submitted' });

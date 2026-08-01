@@ -47,7 +47,9 @@ export default function SignaturePad({ onSave }) {
     setHasDrawn(false);
   };
 
-  const save = () => onSave(canvasRef.current.toDataURL());
+  const save = () => {
+    canvasRef.current.toBlob((blob) => onSave(blob), 'image/png');
+  };
 
   return (
     <div>
